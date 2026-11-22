@@ -444,6 +444,37 @@ dialog.modal[open] > .style-grid { flex: 1 1 auto; min-height: 200px; }
   kbd { display: none; }
 }
 
+/* ───────── Connect to Claude ───────── */
+.connect-banner {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent2) 14%, transparent));
+  font-size: .88rem; line-height: 1.35;
+  transition: transform .15s var(--ease), border-color .2s;
+}
+.connect-banner:hover { border-color: var(--accent); transform: translateY(-1px); }
+.cb-icon { font-size: 1.5rem; }
+.cb-go { margin-left: auto; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.setup-intro { margin: 0; color: var(--muted); font-size: .9rem; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.steps li { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface2); }
+.steps .num {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2)); color: var(--on-accent); font-weight: 700; font-size: .85rem;
+}
+.steps li > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; align-items: flex-start; }
+.steps p { margin: 0; font-size: .84rem; color: var(--muted); }
+.steps code { font-size: .8rem; padding: 1px 5px; border-radius: 5px; background: var(--surface); color: var(--text); }
+.steps .inline { width: 100%; }
+.steps li.done .num { background: #22c55e; }
+.setup-status { min-height: 1.2em; font-weight: 600; color: var(--text) !important; }
+.setup-status.bad { color: #ff5d6c !important; }
+.setup-status.good { color: #22c55e !important; }
+.pulse { animation: pulse 1s ease 3; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
+.error .ghost-btn { margin-top: 10px; }
+
 /* ───────── Android app: keep clear of the status & navigation bars ───────── */
 .native { --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
 .native body { padding-top: var(--sat); padding-bottom: var(--sab); }

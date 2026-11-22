@@ -32,6 +32,11 @@
   <main class="layout">
     <!-- ───────── Composer ───────── -->
     <section class="panel composer" aria-label="Compose">
+      <button class="connect-banner hidden" id="connectBanner">
+        <span class="cb-icon">🔌</span>
+        <span><b>Connect Claude to start</b><br /><span class="muted">2-minute setup, you only do it once</span></span>
+        <span class="cb-go">Set up →</span>
+      </button>
       <div class="segmented" role="tablist" id="modeTabs">
         <button role="tab" data-mode="reply" class="active">💬 They said</button>
         <button role="tab" data-mode="rewrite">✍️ I want to say</button>
@@ -277,7 +282,11 @@
             <button class="ghost-btn small" id="toggleKeyBtn" type="button">👁</button>
           </div>
         </label>
-        <p class="hint" id="keyHint">Stored only in this browser and sent only to your own local server. Get a key at console.anthropic.com.</p>
+        <div class="inline wrap">
+          <button class="ghost-btn small" id="testKeyBtn" type="button">🧪 Test key</button>
+          <button class="ghost-btn small" id="openSetupBtn" type="button">🪄 Help me get a key</button>
+        </div>
+        <p class="hint" id="keyHint">Stored only in this browser and sent only to your own local server.</p>
         <label class="ctl">Thinking speed
           <select id="effortSelect">
             <option value="low">⚡ Fast</option>
@@ -331,6 +340,57 @@
   </aside>
 
   <div class="scrim" id="scrim"></div>
+
+  <!-- Connect-to-Claude setup -->
+  <dialog class="modal small-modal setup-modal" id="setupModal">
+    <div class="modal-head">
+      <h2>🔌 Connect to Claude</h2>
+      <button class="icon-btn close" data-close>✕</button>
+    </div>
+    <p class="setup-intro">Takes about 2 minutes and you only do it once. Each button opens Anthropic's site, then come back here.</p>
+    <ol class="steps">
+      <li>
+        <span class="num">1</span>
+        <div>
+          <b>Make an Anthropic account</b>
+          <p>Sign up with your email or Google. It's free to create.</p>
+          <button class="ghost-btn small" data-link="https://platform.claude.com/">Open Claude Console ↗</button>
+        </div>
+      </li>
+      <li>
+        <span class="num">2</span>
+        <div>
+          <b>Add a little credit</b>
+          <p>Pay-as-you-go: about 1–5¢ per message, so $5 lasts a long time. You can set a spending limit there too.</p>
+          <button class="ghost-btn small" data-link="https://platform.claude.com/settings/billing">Open Billing ↗</button>
+        </div>
+      </li>
+      <li>
+        <span class="num">3</span>
+        <div>
+          <b>Create a key and copy it</b>
+          <p>Tap <i>Create Key</i>, name it “Friendship Helper”, then copy it. It starts with <code>sk-ant-</code> and is only shown once.</p>
+          <button class="ghost-btn small" data-link="https://platform.claude.com/settings/keys">Open API Keys ↗</button>
+        </div>
+      </li>
+      <li>
+        <span class="num">4</span>
+        <div>
+          <b>Paste it here</b>
+          <div class="inline">
+            <input type="password" id="setupKeyInput" placeholder="sk-ant-…" autocomplete="off" />
+            <button class="ghost-btn" id="setupPasteBtn" type="button">📋 Paste</button>
+          </div>
+          <p class="setup-status" id="setupStatus"></p>
+        </div>
+      </li>
+    </ol>
+    <p class="hint">Your key stays on this device. Never share it — anyone with it can spend your credit.</p>
+    <div class="modal-foot">
+      <button class="link-btn" data-close>Later</button>
+      <button class="primary-btn compact" id="setupConnectBtn">Connect</button>
+    </div>
+  </dialog>
 
   <!-- Friend editor -->
   <dialog class="modal small-modal" id="friendModal">

@@ -100,11 +100,17 @@ export async function suggest(client, { history, effort, model = DEFAULT_MODEL }
   }
 }
 
+// Check a key without spending anything: listing models is free.
+export async function checkKey(client) {
+  await client.models.list({ limit: 1 });
+  return { ok: true };
+}
+
 // Map any error to { status, message } the user can act on.
 export function friendlyError(err) {
   if (err instanceof UserError) return { status: err.status, message: err.message };
   if (err instanceof Anthropic.AuthenticationError) {
-    return { status: 401, message: "Claude API key is missing or invalid. Check it in Settings → Claude connection." };
+    return { status: 401, message: "That key didn't work — check you copied all of it (it starts with sk-ant-)." };
   }
   if (err instanceof Anthropic.PermissionDeniedError) return { status: 403, message: "This API key isn't allowed to use that model." };
   if (err instanceof Anthropic.RateLimitError) return { status: 429, message: "Rate limited — give it a few seconds and try again." };

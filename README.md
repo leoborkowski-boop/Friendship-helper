@@ -4,14 +4,14 @@ Tell Claude what your friend said (or drop a screenshot of the chat), or what *y
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 18 or newer and a Claude API key from [console.anthropic.com](https://console.anthropic.com).
+You need [Node.js](https://nodejs.org) 18 or newer and a Claude API key from [platform.claude.com](https://platform.claude.com) (the Claude Console).
 
 ```bash
 npm install
 npm start
 ```
 
-Open **http://localhost:3000**, go to **⚙️ Settings → Claude connection** and paste your key.
+Open **http://localhost:3000** and tap **🔌 Connect Claude**. The setup walks you through making an account, adding credit and creating a key, then checks the key works (the check is free).
 You can also start the server with the key set (`ANTHROPIC_API_KEY=sk-ant-... npm start`) and skip that step.
 
 ## 📱 Android app (.apk)

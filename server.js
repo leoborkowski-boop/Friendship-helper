@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
-import { suggest, friendlyError, DEFAULT_MODEL } from "./src/suggest.js";
+import { suggest, checkKey, friendlyError, DEFAULT_MODEL } from "./src/suggest.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(here, "public");
@@ -68,6 +68,16 @@ async function handleSuggest(req, res) {
   }
 }
 
+async function handleCheck(req, res) {
+  const keyFromApp = typeof req.headers["x-claude-key"] === "string" ? req.headers["x-claude-key"].trim() : "";
+  try {
+    return json(res, 200, await checkKey(getClient(keyFromApp)));
+  } catch (err) {
+    const { status, message } = friendlyError(err);
+    return json(res, status, { error: message });
+  }
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, "http://localhost");
   let rel = decodeURIComponent(url.pathname);
@@ -91,6 +101,7 @@ async function serveStatic(req, res) {
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/api/suggest") return handleSuggest(req, res);
+  if (req.method === "POST" && req.url === "/api/check") return handleCheck(req, res);
   if (req.method === "GET" && req.url === "/api/status") {
     return json(res, 200, {
       model: MODEL,

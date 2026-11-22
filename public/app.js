@@ -421,6 +421,74 @@ async function callClaude(turns) {
   return data;
 }
 
+// ───────────────────────── connect to Claude ─────────────────────────
+const plugins = () => window.Capacitor?.Plugins || {};
+let serverHasKey = false;
+
+function openLink(url) {
+  // In the Android app, open inside a browser tab on top of the app.
+  if (NATIVE && plugins().Browser) return plugins().Browser.open({ url });
+  window.open(url, "_blank", "noopener");
+}
+async function readClipboard() {
+  if (NATIVE && plugins().Clipboard) return (await plugins().Clipboard.read()).value || "";
+  return navigator.clipboard.readText();
+}
+// Free check: asks Claude for its model list with the key. No credit used.
+async function checkKey(key) {
+  if (NATIVE) {
+    const { checkKeyDirect } = await import("./vendor/claude-direct.js");
+    return checkKeyDirect(key);
+  }
+  const res = await fetch("/api/check", { method: "POST", headers: key ? { "x-claude-key": key } : {} });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
+  return data;
+}
+function hasConnection() {
+  return Boolean(state.settings.apiKey) || (!NATIVE && serverHasKey);
+}
+function refreshConnectBanner() {
+  $("#connectBanner").classList.toggle("hidden", hasConnection());
+}
+function setSetupStatus(msg, kind = "") {
+  const el = $("#setupStatus");
+  el.textContent = msg;
+  el.className = `setup-status ${kind}`;
+}
+function openSetup() {
+  closeDrawers();
+  $("#setupKeyInput").value = "";
+  setSetupStatus(state.settings.apiKey ? "You already have a key saved — paste a new one to replace it." : "");
+  $("#setupModal").showModal();
+}
+async function connectKey(raw) {
+  const key = raw.trim();
+  if (!key) return setSetupStatus("Paste your key first.", "bad");
+  const btn = $("#setupConnectBtn");
+  btn.disabled = true;
+  setSetupStatus("Checking your key…");
+  try {
+    await checkKey(key);
+    state.settings.apiKey = key;
+    save();
+    $("#apiKeyInput").value = key;
+    $$(".steps li").forEach((li) => li.classList.add("done"));
+    setSetupStatus("✅ Connected! You're all set.", "good");
+    refreshConnectBanner();
+    checkStatus();
+    setTimeout(() => {
+      $("#setupModal").close();
+      $$(".steps li").forEach((li) => li.classList.toggle("done", false));
+      toast("🎉 Claude is connected");
+    }, 1100);
+  } catch (err) {
+    setSetupStatus(err.message, "bad");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 const LOADING_LINES = ["Reading the room…", "Decoding the vibes…", "Consulting the group chat…", "Drafting replies…", "Picking the perfect emoji…", "Almost there…"];
 function showLoading(on) {
   busy = on;
@@ -438,7 +506,8 @@ function showLoading(on) {
   } else clearInterval(showLoading.timer);
 }
 function showError(msg) {
-  $("#errorBox").innerHTML = `<b>Hmm.</b> ${esc(msg)}`;
+  const keyProblem = /\bkey\b/i.test(msg);
+  $("#errorBox").innerHTML = `<b>Hmm.</b> ${esc(msg)}${keyProblem ? `<br /><button class="ghost-btn small" data-open-setup>🔌 Set up my key</button>` : ""}`;
   $("#errorBox").classList.remove("hidden");
   if (!lastResult) $("#emptyState").classList.remove("hidden");
   else $("#output").classList.remove("hidden");
@@ -566,6 +635,8 @@ async function checkStatus() {
   }
   try {
     const s = await (await fetch("/api/status")).json();
+    serverHasKey = s.serverHasKey;
+    refreshConnectBanner();
     if (state.settings.apiKey) line.textContent = `✅ Using the key saved in this browser · ${s.model}`;
     else if (s.serverHasKey) line.textContent = `✅ Server has a Claude key · ${s.model}`;
     else line.textContent = `🔑 Paste your Claude API key below (or a signed-in ant CLI profile works too) · ${s.model}`;
@@ -806,12 +877,67 @@ function init() {
   $("#myNameInput").value = st.myName;
   $("#myVoiceInput").value = st.myVoice;
   $("#languageInput").value = st.language;
-  const bindSetting = (sel, key, ev = "input") => $(sel).addEventListener(ev, (e) => { st[key] = e.target.value.trim(); save(); if (key === "apiKey") checkStatus(); });
+  const bindSetting = (sel, key, ev = "input") => $(sel).addEventListener(ev, (e) => {
+    st[key] = e.target.value.trim();
+    save();
+    if (key === "apiKey") { checkStatus(); refreshConnectBanner(); }
+  });
   bindSetting("#apiKeyInput", "apiKey", "change");
   bindSetting("#effortSelect", "effort", "change");
   bindSetting("#myNameInput", "myName");
   bindSetting("#myVoiceInput", "myVoice");
   bindSetting("#languageInput", "language");
+  // connect-to-Claude setup
+  $("#connectBanner").addEventListener("click", openSetup);
+  $("#openSetupBtn").addEventListener("click", openSetup);
+  $("#errorBox").addEventListener("click", (e) => { if (e.target.closest("[data-open-setup]")) openSetup(); });
+  $("#setupModal").addEventListener("click", (e) => {
+    const link = e.target.closest("[data-link]");
+    if (link) openLink(link.dataset.link);
+  });
+  $("#setupConnectBtn").addEventListener("click", () => connectKey($("#setupKeyInput").value));
+  $("#setupKeyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") connectKey(e.target.value); });
+  $("#setupKeyInput").addEventListener("input", (e) => {
+    const v = e.target.value.trim();
+    if (v.startsWith("sk-ant-") && v.length >= 40) connectKey(v); // pasted a whole key: connect right away
+  });
+  $("#setupPasteBtn").addEventListener("click", async () => {
+    try {
+      const text = (await readClipboard()).trim();
+      if (!text) throw new Error("empty");
+      $("#setupKeyInput").value = text;
+      connectKey(text);
+    } catch {
+      $("#setupKeyInput").focus();
+      toast("Long-press the box and tap Paste");
+    }
+  });
+  // Coming back from Anthropic's site with a copied key: point at the Paste button.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !$("#setupModal").open || $("#setupKeyInput").value) return;
+    const btn = $("#setupPasteBtn");
+    btn.classList.toggle("pulse", false);
+    void btn.offsetWidth;
+    btn.classList.add("pulse");
+    toast("Copied your key? Tap 📋 Paste");
+  });
+  $("#testKeyBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const key = $("#apiKeyInput").value.trim();
+    if (!key && (NATIVE || !serverHasKey)) return openSetup();
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+      await checkKey(key);
+      toast("✅ Key works!");
+    } catch (err) {
+      toast("❌ " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🧪 Test key";
+    }
+  });
+
   $("#toggleKeyBtn").addEventListener("click", () => {
     const i = $("#apiKeyInput");
     i.type = i.type === "password" ? "text" : "password";
@@ -859,9 +985,9 @@ function init() {
 
   if (NATIVE) {
     document.documentElement.classList.add("native");
-    $("#keyHint").textContent = "Stored only on this phone and sent only to Claude (api.anthropic.com). Get a key at console.anthropic.com.";
+    $("#keyHint").textContent = "Stored only on this phone and sent only to Claude (api.anthropic.com).";
     $("#apiKeyInput").placeholder = "sk-ant-…";
-    if (!state.settings.apiKey) setTimeout(() => { openDrawer("settings"); toast("👋 Add your Claude API key to start"); }, 400);
+    if (!state.settings.apiKey) setTimeout(openSetup, 400);
     // Android back button: close whatever is open before leaving the app.
     const AppPlugin = window.Capacitor?.Plugins?.App;
     AppPlugin?.addListener("backButton", () => {
@@ -871,6 +997,7 @@ function init() {
       AppPlugin.minimizeApp();
     });
   }
+  refreshConnectBanner();
   checkStatus();
 }
 
