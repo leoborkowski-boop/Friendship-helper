@@ -7,6 +7,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const uid = () => Math.random().toString(36).slice(2, 10);
 const STYLE_BY_ID = Object.fromEntries(STYLES.map((s) => [s.id, s]));
 const MAX_STYLES = 6;
+// Inside the Android app there is no local server: talk to Claude directly.
+const NATIVE = Boolean(window.Capacitor?.isNativePlatform?.());
 
 // ───────────────────────── persisted state ─────────────────────────
 const STORE_KEY = "friendship-helper:v1";
@@ -401,6 +403,10 @@ function buildPrompt(text) {
 
 // ───────────────────────── API ─────────────────────────
 async function callClaude(turns) {
+  if (NATIVE) {
+    const { suggestDirect } = await import("./vendor/claude-direct.js");
+    return suggestDirect({ apiKey: state.settings.apiKey, history: turns, effort: state.settings.effort });
+  }
   const res = await fetch("/api/suggest", {
     method: "POST",
     headers: {
@@ -552,6 +558,12 @@ function closeDrawers() {
 
 async function checkStatus() {
   const line = $("#statusLine");
+  if (NATIVE) {
+    line.textContent = state.settings.apiKey
+      ? "✅ Key saved on this phone — talking straight to Claude"
+      : "🔑 Paste your Claude API key below to get started";
+    return;
+  }
   try {
     const s = await (await fetch("/api/status")).json();
     if (state.settings.apiKey) line.textContent = `✅ Using the key saved in this browser · ${s.model}`;
@@ -808,6 +820,10 @@ function init() {
   $("#exportAllBtn").addEventListener("click", () => {
     const { settings, ...rest } = state;
     const data = { ...rest, settings: { ...settings, apiKey: "" } }; // never export the key
+    if (NATIVE) {
+      copyText(JSON.stringify(data)).then(() => toast("Backup copied — paste it somewhere safe"));
+      return;
+    }
     const a = Object.assign(document.createElement("a"), {
       href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })),
       download: "friendship-helper-backup.json",
@@ -815,26 +831,46 @@ function init() {
     a.click();
     URL.revokeObjectURL(a.href);
   });
-  $("#importAllBtn").addEventListener("click", () => $("#importFile").click());
+  $("#importAllBtn").addEventListener("click", () => {
+    if (!NATIVE) return $("#importFile").click();
+    const text = prompt("Paste your backup:");
+    if (text) restoreBackup(text);
+  });
   $("#importFile").addEventListener("change", async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (file) restoreBackup(await file.text());
+  });
+  function restoreBackup(text) {
     try {
-      const data = JSON.parse(await file.text());
+      const data = JSON.parse(text);
       const key = state.settings.apiKey;
       state = { ...structuredClone(DEFAULTS), ...data, settings: { ...DEFAULTS.settings, ...data.settings, apiKey: key }, theme: normalizeTheme(data.theme || PRESETS[0]) };
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       location.reload();
     } catch {
-      toast("That backup file didn't work");
+      toast("That backup didn't work");
     }
-  });
+  }
   $("#resetAllBtn").addEventListener("click", () => {
     if (!confirm("Reset everything? Friends, saved messages, themes and settings will be deleted.")) return;
     try { localStorage.removeItem(STORE_KEY); } catch {}
     location.reload();
   });
 
+  if (NATIVE) {
+    document.documentElement.classList.add("native");
+    $("#keyHint").textContent = "Stored only on this phone and sent only to Claude (api.anthropic.com). Get a key at console.anthropic.com.";
+    $("#apiKeyInput").placeholder = "sk-ant-…";
+    if (!state.settings.apiKey) setTimeout(() => { openDrawer("settings"); toast("👋 Add your Claude API key to start"); }, 400);
+    // Android back button: close whatever is open before leaving the app.
+    const AppPlugin = window.Capacitor?.Plugins?.App;
+    AppPlugin?.addListener("backButton", () => {
+      const dialog = $("dialog[open]");
+      if (dialog) return dialog.close();
+      if ($(".drawer.open")) return closeDrawers();
+      AppPlugin.minimizeApp();
+    });
+  }
   checkStatus();
 }
 

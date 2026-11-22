@@ -443,3 +443,9 @@ dialog.modal[open] > .style-grid { flex: 1 1 auto; min-height: 200px; }
   .panel { padding: 16px; }
   kbd { display: none; }
 }
+
+/* ───────── Android app: keep clear of the status & navigation bars ───────── */
+.native { --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
+.native body { padding-top: var(--sat); padding-bottom: var(--sab); }
+.native .drawer { padding-top: var(--sat); padding-bottom: var(--sab); }
+.native .toast { bottom: calc(24px + var(--sab)); }
