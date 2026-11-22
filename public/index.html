@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d0f1a" />
+  <title>Friendship Helper</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Fredoka:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Nunito:wght@400;600;700&family=Outfit:wght@400;500;600;700&family=Playfair+Display:wght@500;700&family=Poppins:wght@400;500;600&family=Quicksand:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-layer" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">💬</span>
+      <div>
+        <h1>Friendship Helper</h1>
+        <p class="tagline">tell me the situation, I'll tell you what to say</p>
+      </div>
+    </div>
+    <nav class="top-actions">
+      <button class="icon-btn" data-open="library" title="Saved & history"><span>⭐</span><b>Saved</b></button>
+      <button class="icon-btn" data-open="themes" title="Themes"><span>🎨</span><b>Themes</b></button>
+      <button class="icon-btn" data-open="settings" title="Settings"><span>⚙️</span><b>Settings</b></button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <!-- ───────── Composer ───────── -->
+    <section class="panel composer" aria-label="Compose">
+      <div class="segmented" role="tablist" id="modeTabs">
+        <button role="tab" data-mode="reply" class="active">💬 They said</button>
+        <button role="tab" data-mode="rewrite">✍️ I want to say</button>
+        <button role="tab" data-mode="start">🤷 Help me start</button>
+      </div>
+
+      <div class="field">
+        <label for="mainInput" id="mainLabel">What did they say?</label>
+        <textarea id="mainInput" rows="4" placeholder="Paste their message here…"></textarea>
+      </div>
+
+      <div class="dropzone" id="dropzone" tabindex="0">
+        <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
+        <div class="dz-inner">
+          <span class="dz-icon">📸</span>
+          <span><b>Add a screenshot</b> — drop, paste, or click</span>
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="row two">
+        <div class="field">
+          <label for="friendSelect">Who's it for?</label>
+          <div class="inline">
+            <select id="friendSelect"></select>
+            <button class="ghost-btn small" id="editFriendBtn" title="Edit friends">✏️</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="countInput">Options <output id="countOut">3</output></label>
+          <input type="range" id="countInput" min="1" max="6" value="3" />
+        </div>
+      </div>
+
+      <details class="more">
+        <summary>Extra context <span class="muted">(optional)</span></summary>
+        <textarea id="contextInput" rows="2" placeholder="e.g. we haven't talked in a month · they just got a new job · I'm a bit annoyed but don't want to start a fight"></textarea>
+      </details>
+
+      <div class="field">
+        <div class="label-row">
+          <label>Style</label>
+          <div class="inline gap-s">
+            <button class="ghost-btn small" id="randomStyleBtn" title="Random styles">🎲 Surprise me</button>
+            <button class="ghost-btn small" id="openStylesBtn">Browse all 100 →</button>
+          </div>
+        </div>
+        <div class="chips" id="selectedStyles"></div>
+        <div class="chips quick" id="quickStyles"></div>
+      </div>
+
+      <div class="knobs">
+        <div class="knob">
+          <span>Length</span>
+          <div class="pills" data-knob="length">
+            <button data-v="tiny">Tiny</button><button data-v="short">Short</button><button data-v="medium">Medium</button><button data-v="long">Long</button>
+          </div>
+        </div>
+        <div class="knob">
+          <span>Emojis</span>
+          <div class="pills" data-knob="emoji">
+            <button data-v="none">None</button><button data-v="some">Some</button><button data-v="lots">Lots</button>
+          </div>
+        </div>
+        <div class="knob">
+          <span>Style strength</span>
+          <div class="pills" data-knob="strength">
+            <button data-v="subtle">Subtle</button><button data-v="medium">Medium</button><button data-v="max">Max</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="primary-btn" id="goBtn">
+        <span class="go-label">✨ Tell me what to say</span>
+        <kbd>Ctrl ↵</kbd>
+      </button>
+    </section>
+
+    <!-- ───────── Results ───────── -->
+    <section class="panel results" aria-label="Suggestions" aria-live="polite">
+      <div class="empty" id="emptyState">
+        <div class="empty-art">🫶</div>
+        <h2>Ready when you are</h2>
+        <p>Paste what they said, type what you want to say, or drop a screenshot of the chat. Pick a vibe, hit the button.</p>
+        <ul class="examples" id="examples"></ul>
+      </div>
+
+      <div class="loading hidden" id="loading">
+        <div class="typing"><i></i><i></i><i></i></div>
+        <p id="loadingText">Reading the room…</p>
+      </div>
+
+      <div class="error hidden" id="errorBox"></div>
+
+      <div class="output hidden" id="output">
+        <div class="read-card" id="readCard"></div>
+        <div class="cards" id="cards"></div>
+        <div class="tip hidden" id="tipBox"></div>
+
+        <div class="refine">
+          <div class="chips" id="refineChips"></div>
+          <form class="refine-form" id="refineForm">
+            <input id="refineInput" placeholder="Tweak it… (e.g. mention the concert, less needy)" autocomplete="off" />
+            <button class="ghost-btn" type="submit">Refine</button>
+          </form>
+          <button class="link-btn" id="newChatBtn">↺ Start fresh</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────── Style browser ───────── -->
+  <dialog class="modal styles-modal" id="stylesModal">
+    <div class="modal-head">
+      <h2>Pick your styles <span class="muted" id="styleCount"></span></h2>
+      <button class="icon-btn close" data-close>✕</button>
+    </div>
+    <div class="styles-tools">
+      <input type="search" id="styleSearch" placeholder="Search 100 styles… (pirate, flirty, haiku)" />
+      <label class="switch-line"><input type="checkbox" id="favOnly" /> ⭐ favorites only</label>
+    </div>
+    <div class="cat-tabs" id="catTabs"></div>
+    <div class="style-grid" id="styleGrid"></div>
+    <div class="custom-style">
+      <label for="customStyleInput">✏️ Or describe your own style</label>
+      <div class="inline">
+        <input id="customStyleInput" placeholder="e.g. like a sleepy cat who just learned English" />
+        <button class="ghost-btn" id="addCustomStyleBtn">Add</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="link-btn" id="clearStylesBtn">Clear all</button>
+      <button class="primary-btn compact" data-close>Done</button>
+    </div>
+  </dialog>
+
+  <!-- ───────── Drawers ───────── -->
+  <aside class="drawer" id="themesDrawer" aria-label="Themes">
+    <div class="drawer-head">
+      <h2>🎨 Themes</h2>
+      <button class="icon-btn close" data-close-drawer>✕</button>
+    </div>
+    <div class="drawer-body">
+      <h3>Presets</h3>
+      <div class="theme-grid" id="themeGrid"></div>
+
+      <div id="customThemesWrap" class="hidden">
+        <h3>Your themes</h3>
+        <div class="theme-grid" id="customThemeGrid"></div>
+      </div>
+
+      <div class="label-row">
+        <h3>Customize</h3>
+        <button class="ghost-btn small" id="shuffleThemeBtn">🎲 Shuffle</button>
+      </div>
+
+      <div class="group">
+        <h4>Colors</h4>
+        <div class="color-grid" id="colorGrid"></div>
+      </div>
+
+      <div class="group">
+        <h4>Type</h4>
+        <label class="ctl">Font
+          <select id="fontSelect"></select>
+        </label>
+        <label class="ctl">Text size <output id="scaleOut"></output>
+          <input type="range" id="scaleInput" min="85" max="125" step="5" />
+        </label>
+      </div>
+
+      <div class="group">
+        <h4>Shape & feel</h4>
+        <label class="ctl">Corner roundness <output id="radiusOut"></output>
+          <input type="range" id="radiusInput" min="0" max="28" />
+        </label>
+        <label class="ctl">Message bubbles
+          <select id="bubbleSelect">
+            <option value="rounded">Rounded</option>
+            <option value="pill">Pill</option>
+            <option value="sharp">Sharp</option>
+            <option value="tail">Chat tail</option>
+          </select>
+        </label>
+        <label class="ctl">Spacing
+          <select id="densitySelect">
+            <option value="compact">Compact</option>
+            <option value="cozy">Cozy</option>
+            <option value="roomy">Roomy</option>
+          </select>
+        </label>
+        <label class="ctl">Shadow depth <output id="shadowOut"></output>
+          <input type="range" id="shadowInput" min="0" max="3" />
+        </label>
+      </div>
+
+      <div class="group">
+        <h4>Background</h4>
+        <label class="ctl">Style
+          <select id="bgSelect">
+            <option value="solid">Solid</option>
+            <option value="gradient">Gradient</option>
+            <option value="animated">Animated gradient</option>
+            <option value="mesh">Glow mesh</option>
+            <option value="dots">Dots</option>
+            <option value="grid">Grid</option>
+            <option value="stripes">Stripes</option>
+          </select>
+        </label>
+        <label class="switch-line"><input type="checkbox" id="glassInput" /> Glass panels (frosted blur)</label>
+        <label class="ctl">Blur amount <output id="blurOut"></output>
+          <input type="range" id="blurInput" min="0" max="30" />
+        </label>
+        <label class="switch-line"><input type="checkbox" id="animInput" /> Animations</label>
+      </div>
+
+      <div class="group">
+        <h4>Save & share</h4>
+        <div class="inline">
+          <input id="themeNameInput" placeholder="Name your theme" />
+          <button class="ghost-btn" id="saveThemeBtn">Save</button>
+        </div>
+        <div class="inline wrap">
+          <button class="ghost-btn small" id="exportThemeBtn">📋 Copy theme code</button>
+          <button class="ghost-btn small" id="importThemeBtn">📥 Paste theme code</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="drawer" id="settingsDrawer" aria-label="Settings">
+    <div class="drawer-head">
+      <h2>⚙️ Settings</h2>
+      <button class="icon-btn close" data-close-drawer>✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="group">
+        <h4>Claude connection</h4>
+        <p class="status-line" id="statusLine">Checking…</p>
+        <label class="ctl">API key
+          <div class="inline">
+            <input type="password" id="apiKeyInput" placeholder="sk-ant-… (optional if the server has one)" autocomplete="off" />
+            <button class="ghost-btn small" id="toggleKeyBtn" type="button">👁</button>
+          </div>
+        </label>
+        <p class="hint">Stored only in this browser and sent only to your own local server. Get a key at console.anthropic.com.</p>
+        <label class="ctl">Thinking speed
+          <select id="effortSelect">
+            <option value="low">⚡ Fast</option>
+            <option value="medium">⚖️ Balanced</option>
+            <option value="high">🧠 Thorough</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group">
+        <h4>About you</h4>
+        <label class="ctl">Your name
+          <input id="myNameInput" placeholder="optional" />
+        </label>
+        <label class="ctl">How you text <span class="muted">(paste a few of your real messages so it sounds like you)</span>
+          <textarea id="myVoiceInput" rows="3" placeholder="lmaooo no way · ok but hear me out · omw!!"></textarea>
+        </label>
+        <label class="ctl">Language
+          <input id="languageInput" placeholder="Auto (match the chat) — or e.g. Spanish, Polish" />
+        </label>
+      </div>
+
+      <div class="group">
+        <h4>Friends</h4>
+        <div id="friendList" class="friend-list"></div>
+        <button class="ghost-btn small" id="addFriendBtn">+ Add friend</button>
+      </div>
+
+      <div class="group">
+        <h4>Your data</h4>
+        <div class="inline wrap">
+          <button class="ghost-btn small" id="exportAllBtn">⬇️ Export everything</button>
+          <button class="ghost-btn small" id="importAllBtn">⬆️ Import</button>
+          <button class="ghost-btn small danger" id="resetAllBtn">🗑 Reset app</button>
+        </div>
+        <input type="file" id="importFile" accept="application/json" hidden />
+      </div>
+    </div>
+  </aside>
+
+  <aside class="drawer" id="libraryDrawer" aria-label="Saved and history">
+    <div class="drawer-head">
+      <h2>⭐ Library</h2>
+      <button class="icon-btn close" data-close-drawer>✕</button>
+    </div>
+    <div class="segmented small" id="libTabs">
+      <button data-tab="saved" class="active">Saved</button>
+      <button data-tab="history">History</button>
+    </div>
+    <div class="drawer-body" id="libraryBody"></div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Friend editor -->
+  <dialog class="modal small-modal" id="friendModal">
+    <form method="dialog" id="friendForm">
+      <div class="modal-head">
+        <h2 id="friendModalTitle">Add friend</h2>
+        <button class="icon-btn close" value="cancel" formnovalidate>✕</button>
+      </div>
+      <div class="inline">
+        <input id="friendEmoji" class="emoji-input" maxlength="4" value="🙂" aria-label="Emoji" />
+        <input id="friendName" placeholder="Name" required />
+      </div>
+      <label class="ctl">Relationship
+        <input id="friendRel" list="relList" placeholder="best friend, crush, group chat, mom…" />
+        <datalist id="relList">
+          <option value="Best friend"></option><option value="Close friend"></option><option value="New friend"></option>
+          <option value="Crush"></option><option value="Partner"></option><option value="Group chat"></option>
+          <option value="Sibling"></option><option value="Parent"></option><option value="Coworker"></option><option value="Classmate"></option>
+        </datalist>
+      </label>
+      <label class="ctl">Notes <span class="muted">(inside jokes, what they're into, how they text)</span>
+        <textarea id="friendNotes" rows="3" placeholder="loves cats, super sarcastic, going through exams rn"></textarea>
+      </label>
+      <div class="modal-foot">
+        <button class="link-btn danger hidden" id="deleteFriendBtn" value="delete" type="button">Delete</button>
+        <button class="primary-btn compact" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
