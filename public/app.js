@@ -22,7 +22,7 @@ const DEFAULTS = {
   knobs: { length: "short", emoji: "some", strength: "medium", count: 3 },
   friends: [],
   friendId: "",
-  settings: { provider: "gemini", apiKey: "", keys: {}, models: {}, effort: "low", myName: "", myVoice: "", language: "" },
+  settings: { provider: "gemini", apiKey: "", keys: {}, models: {}, auto: {}, effort: "low", myName: "", myVoice: "", language: "" },
   saved: [],
   history: [],
 };
@@ -407,7 +407,14 @@ function buildPrompt(text) {
 // ───────────────────────── API ─────────────────────────
 async function callClaude(turns) {
   if (prov() !== "claude") {
-    return suggestFree(prov(), { apiKey: keyFor(), model: state.settings.models?.[prov()] || "", history: turns });
+    const p = prov();
+    return suggestFree(p, {
+      apiKey: keyFor(p),
+      model: state.settings.models?.[p] || "",
+      auto: state.settings.auto?.[p] || {},
+      onAuto: (slot, model) => { setAutoModel(p, slot, model); save(); checkStatus(); },
+      history: turns,
+    });
   }
   if (NATIVE) {
     const { suggestDirect } = await import("./vendor/claude-direct.js");
@@ -436,8 +443,18 @@ function keyFor(p = prov()) {
 }
 function setKeyFor(p, key) {
   if (p === "claude") state.settings.apiKey = key;
-  else state.settings.keys = { ...state.settings.keys, [p]: key };
+  else {
+    if (state.settings.keys?.[p] !== key) setAutoModel(p, null);
+    state.settings.keys = { ...state.settings.keys, [p]: key };
+  }
 }
+// The free model that was tested and works with this key (found automatically).
+function setAutoModel(p, slot, model) {
+  const auto = { ...state.settings.auto };
+  auto[p] = slot ? { ...auto[p], [slot]: model } : {};
+  state.settings.auto = auto;
+}
+const modelInUse = (p = prov()) => state.settings.models?.[p] || state.settings.auto?.[p]?.text || "auto-pick";
 const CLAUDE_SETUP = {
   name: "Claude",
   tag: "Paid",
@@ -544,26 +561,36 @@ function openSetup() {
   setSetupStatus(keyFor(setupProvider) ? "You already have a key saved — paste a new one to replace it." : "");
   $("#setupModal").showModal();
 }
+let connecting = false;
 async function connectKey(raw) {
   const key = raw.trim();
   if (!key) return setSetupStatus("Paste your key first.", "bad");
+  if (connecting) return; // pasting auto-connects; don't test twice if Connect is tapped too
   // Pasted a key from a different service? Switch to it automatically.
   const detected = detectProvider(key);
   if (detected && detected !== setupProvider) {
     setupProvider = detected;
     renderSetup();
   }
+  // This exact key was just connected and tested: nothing to redo.
+  const p = setupProvider;
+  if (p !== "claude" && prov() === p && keyFor(p) === key && state.settings.auto?.[p]?.text) {
+    return setSetupStatus(`✅ Connected and tested! Using ${state.settings.auto[p].text}.`, "good");
+  }
+  connecting = true;
   const btn = $("#setupConnectBtn");
   btn.disabled = true;
   setSetupStatus("Checking your key…");
   try {
-    await checkKey(key, setupProvider);
+    if (setupProvider !== "claude") setSetupStatus("Key works — finding a free model that answers (one tiny test message)…");
+    const res = await checkKey(key, setupProvider);
     state.settings.provider = setupProvider;
     setKeyFor(setupProvider, key);
+    if (res?.model) setAutoModel(setupProvider, "text", res.model);
     save();
     syncConnectionUI();
     $$(".steps li").forEach((li) => li.classList.add("done"));
-    setSetupStatus("✅ Connected! You're all set.", "good");
+    setSetupStatus(res?.model ? `✅ Connected and tested! Using ${res.model}.` : "✅ Connected! You're all set.", "good");
     setTimeout(() => {
       $("#setupModal").close();
       $$(".steps li").forEach((li) => li.classList.toggle("done", false));
@@ -573,6 +600,7 @@ async function connectKey(raw) {
     setSetupStatus(err.message, "bad");
   } finally {
     btn.disabled = false;
+    connecting = false;
   }
 }
 
@@ -717,7 +745,7 @@ async function checkStatus() {
   if (prov() !== "claude") {
     const p = PROVIDERS[prov()];
     line.textContent = keyFor()
-      ? `✅ ${p.name} connected · free · ${state.settings.models?.[prov()] || p.defaultModel}`
+      ? `✅ ${p.name} connected · free · ${modelInUse()}`
       : `🔑 Add your free ${p.name} key below`;
     refreshConnectBanner();
     return;
@@ -1044,8 +1072,13 @@ function init() {
     btn.disabled = true;
     btn.textContent = "Checking…";
     try {
-      await checkKey(key);
-      toast("✅ Key works!");
+      const res = await checkKey(key);
+      if (res?.model) {
+        setAutoModel(prov(), "text", res.model);
+        save();
+        checkStatus();
+      }
+      toast(res?.model ? `✅ Works! Tested with ${res.model}` : "✅ Key works!");
     } catch (err) {
       toast("❌ " + err.message);
     } finally {

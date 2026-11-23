@@ -78,7 +78,13 @@ export function friendlyError(err) {
   }
   if (err instanceof Anthropic.PermissionDeniedError) return { status: 403, message: "This API key isn't allowed to use that model." };
   if (err instanceof Anthropic.RateLimitError) return { status: 429, message: "Rate limited — give it a few seconds and try again." };
-  if (err instanceof Anthropic.BadRequestError) return { status: 400, message: `Claude rejected the request: ${err.message}` };
+  if (err instanceof Anthropic.BadRequestError) {
+    // A brand-new key passes the key check but can't generate until the account has credit.
+    if (/credit balance|billing|purchase credits/i.test(err.message)) {
+      return { status: 402, message: "Your Claude key works, but the account has no credit yet. Add some at platform.claude.com/settings/billing — or switch to a free AI in Settings." };
+    }
+    return { status: 400, message: `Claude rejected the request: ${err.message}` };
+  }
   if (err instanceof Anthropic.APIConnectionError) return { status: 502, message: "Couldn't reach Claude. Check your internet connection." };
   if (err instanceof Anthropic.APIError) return { status: err.status || 500, message: `Claude API error: ${err.message}` };
   // Missing credentials surface as a plain Error from the client constructor.
