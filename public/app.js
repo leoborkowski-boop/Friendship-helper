@@ -1,5 +1,6 @@
 import { STYLES, STYLE_CATEGORIES } from "./styles-data.js";
 import { PRESETS, FONTS, COLOR_KEYS, applyTheme, randomTheme, normalizeTheme } from "./themes.js";
+import { PROVIDERS, detectProvider, suggestFree, checkFreeKey } from "./providers.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -21,7 +22,7 @@ const DEFAULTS = {
   knobs: { length: "short", emoji: "some", strength: "medium", count: 3 },
   friends: [],
   friendId: "",
-  settings: { apiKey: "", effort: "low", myName: "", myVoice: "", language: "" },
+  settings: { provider: "gemini", apiKey: "", keys: {}, models: {}, effort: "low", myName: "", myVoice: "", language: "" },
   saved: [],
   history: [],
 };
@@ -31,6 +32,8 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return structuredClone(DEFAULTS);
     const data = JSON.parse(raw);
+    // People who set up Claude before free AIs existed keep using Claude.
+    if (data.settings?.apiKey && !data.settings.provider) data.settings.provider = "claude";
     return {
       ...structuredClone(DEFAULTS),
       ...data,
@@ -403,6 +406,9 @@ function buildPrompt(text) {
 
 // ───────────────────────── API ─────────────────────────
 async function callClaude(turns) {
+  if (prov() !== "claude") {
+    return suggestFree(prov(), { apiKey: keyFor(), model: state.settings.models?.[prov()] || "", history: turns });
+  }
   if (NATIVE) {
     const { suggestDirect } = await import("./vendor/claude-direct.js");
     return suggestDirect({ apiKey: state.settings.apiKey, history: turns, effort: state.settings.effort });
@@ -421,8 +427,80 @@ async function callClaude(turns) {
   return data;
 }
 
-// ───────────────────────── connect to Claude ─────────────────────────
+// ───────────────────────── connect an AI ─────────────────────────
 const plugins = () => window.Capacitor?.Plugins || {};
+const prov = () => state.settings.provider || "gemini";
+const providerName = (p = prov()) => (p === "claude" ? "Claude" : PROVIDERS[p].name);
+function keyFor(p = prov()) {
+  return (p === "claude" ? state.settings.apiKey : state.settings.keys?.[p]) || "";
+}
+function setKeyFor(p, key) {
+  if (p === "claude") state.settings.apiKey = key;
+  else state.settings.keys = { ...state.settings.keys, [p]: key };
+}
+const CLAUDE_SETUP = {
+  name: "Claude",
+  tag: "Paid",
+  blurb: "Best quality. Pay-as-you-go, roughly 1–5¢ per message — you add credit first.",
+  keyPrefix: "sk-ant-",
+  privacy: "",
+  steps: [
+    { title: "Make an Anthropic account", text: "Sign up with your email or Google.", link: "https://platform.claude.com/", label: "Open Claude Console ↗" },
+    { title: "Add a little credit", text: "$5 lasts a long time. You can set a spending limit there too.", link: "https://platform.claude.com/settings/billing", label: "Open Billing ↗" },
+    { title: "Create a key and copy it", text: "Tap <i>Create Key</i>, then copy it. It starts with <code>sk-ant-</code> and is only shown once.", link: "https://platform.claude.com/settings/keys", label: "Open API Keys ↗" },
+  ],
+};
+const setupInfo = (p) => (p === "claude" ? CLAUDE_SETUP : PROVIDERS[p]);
+let setupProvider = "gemini";
+
+function renderSetup() {
+  $("#providerPick").innerHTML = ["gemini", "groq", "openrouter", "claude"]
+    .map((p) => {
+      const i = setupInfo(p);
+      return `<button class="prov ${p === setupProvider ? "on" : ""}" data-prov="${p}"><span class="prov-tag ${p === "claude" ? "paid" : ""}">${esc(i.tag)}</span><b>${esc(i.name)}</b></button>`;
+    })
+    .join("");
+  const info = setupInfo(setupProvider);
+  $("#setupIntro").textContent = info.blurb;
+  $$("#setupSteps .link-step").forEach((li) => li.remove());
+  $("#pasteStep").insertAdjacentHTML(
+    "beforebegin",
+    info.steps
+      .map((s, i) => `<li class="link-step"><span class="num">${i + 1}</span><div><b>${esc(s.title)}</b><p>${s.text}</p>${s.link ? `<button class="ghost-btn small" data-link="${s.link}">${esc(s.label)}</button>` : ""}</div></li>`)
+      .join(""),
+  );
+  $("#pasteNum").textContent = info.steps.length + 1;
+  $("#setupKeyInput").placeholder = `${info.keyPrefix}…`;
+  $("#setupHint").textContent = info.privacy
+    ? `🔒 Your key stays on this device.  ⚠️ ${info.privacy}`
+    : "🔒 Your key stays on this device. Never share it — anyone with it can spend your credit.";
+}
+
+// Settings panel: show the key, model and options for the chosen AI.
+function syncConnectionUI() {
+  const p = prov();
+  const info = setupInfo(p);
+  $("#providerSelect").value = p;
+  $("#keyLabel").textContent = `${providerName(p)} API key`;
+  $("#apiKeyInput").value = keyFor(p);
+  $("#apiKeyInput").placeholder = p === "claude" && !NATIVE ? "sk-ant-… (optional if the server has one)" : `${info.keyPrefix}…`;
+  $("#keyHint").textContent =
+    p !== "claude"
+      ? `Stored only on this ${NATIVE ? "phone" : "browser"} and sent only to ${PROVIDERS[p].name}.`
+      : NATIVE
+        ? "Stored only on this phone and sent only to Claude (api.anthropic.com)."
+        : "Stored only in this browser and sent only to your own local server.";
+  $("#privacyNote").classList.toggle("hidden", !info.privacy);
+  $("#privacyNote").textContent = info.privacy ? `⚠️ ${info.privacy}` : "";
+  $("#modelRow").classList.toggle("hidden", p === "claude");
+  if (p !== "claude") {
+    $("#modelInput").value = state.settings.models?.[p] || "";
+    $("#modelInput").placeholder = PROVIDERS[p].defaultModel;
+  }
+  $("#effortRow").classList.toggle("hidden", p !== "claude");
+  refreshConnectBanner();
+  checkStatus();
+}
 let serverHasKey = false;
 
 function openLink(url) {
@@ -435,7 +513,8 @@ async function readClipboard() {
   return navigator.clipboard.readText();
 }
 // Free check: asks Claude for its model list with the key. No credit used.
-async function checkKey(key) {
+async function checkKey(key, p = prov()) {
+  if (p !== "claude") return checkFreeKey(p, key);
   if (NATIVE) {
     const { checkKeyDirect } = await import("./vendor/claude-direct.js");
     return checkKeyDirect(key);
@@ -446,6 +525,7 @@ async function checkKey(key) {
   return data;
 }
 function hasConnection() {
+  if (prov() !== "claude") return Boolean(keyFor());
   return Boolean(state.settings.apiKey) || (!NATIVE && serverHasKey);
 }
 function refreshConnectBanner() {
@@ -458,29 +538,36 @@ function setSetupStatus(msg, kind = "") {
 }
 function openSetup() {
   closeDrawers();
+  setupProvider = prov();
+  renderSetup();
   $("#setupKeyInput").value = "";
-  setSetupStatus(state.settings.apiKey ? "You already have a key saved — paste a new one to replace it." : "");
+  setSetupStatus(keyFor(setupProvider) ? "You already have a key saved — paste a new one to replace it." : "");
   $("#setupModal").showModal();
 }
 async function connectKey(raw) {
   const key = raw.trim();
   if (!key) return setSetupStatus("Paste your key first.", "bad");
+  // Pasted a key from a different service? Switch to it automatically.
+  const detected = detectProvider(key);
+  if (detected && detected !== setupProvider) {
+    setupProvider = detected;
+    renderSetup();
+  }
   const btn = $("#setupConnectBtn");
   btn.disabled = true;
   setSetupStatus("Checking your key…");
   try {
-    await checkKey(key);
-    state.settings.apiKey = key;
+    await checkKey(key, setupProvider);
+    state.settings.provider = setupProvider;
+    setKeyFor(setupProvider, key);
     save();
-    $("#apiKeyInput").value = key;
+    syncConnectionUI();
     $$(".steps li").forEach((li) => li.classList.add("done"));
     setSetupStatus("✅ Connected! You're all set.", "good");
-    refreshConnectBanner();
-    checkStatus();
     setTimeout(() => {
       $("#setupModal").close();
       $$(".steps li").forEach((li) => li.classList.toggle("done", false));
-      toast("🎉 Claude is connected");
+      toast(`🎉 ${providerName()} is connected`);
     }, 1100);
   } catch (err) {
     setSetupStatus(err.message, "bad");
@@ -627,6 +714,14 @@ function closeDrawers() {
 
 async function checkStatus() {
   const line = $("#statusLine");
+  if (prov() !== "claude") {
+    const p = PROVIDERS[prov()];
+    line.textContent = keyFor()
+      ? `✅ ${p.name} connected · free · ${state.settings.models?.[prov()] || p.defaultModel}`
+      : `🔑 Add your free ${p.name} key below`;
+    refreshConnectBanner();
+    return;
+  }
   if (NATIVE) {
     line.textContent = state.settings.apiKey
       ? "✅ Key saved on this phone — talking straight to Claude"
@@ -872,7 +967,6 @@ function init() {
 
   // settings
   const st = state.settings;
-  $("#apiKeyInput").value = st.apiKey;
   $("#effortSelect").value = st.effort;
   $("#myNameInput").value = st.myName;
   $("#myVoiceInput").value = st.myVoice;
@@ -882,7 +976,23 @@ function init() {
     save();
     if (key === "apiKey") { checkStatus(); refreshConnectBanner(); }
   });
-  bindSetting("#apiKeyInput", "apiKey", "change");
+  $("#apiKeyInput").addEventListener("change", (e) => {
+    setKeyFor(prov(), e.target.value.trim());
+    save();
+    checkStatus();
+    refreshConnectBanner();
+  });
+  $("#providerSelect").addEventListener("change", (e) => {
+    st.provider = e.target.value;
+    save();
+    syncConnectionUI();
+    if (!keyFor()) openSetup();
+  });
+  $("#modelInput").addEventListener("change", (e) => {
+    st.models = { ...st.models, [prov()]: e.target.value.trim() };
+    save();
+    checkStatus();
+  });
   bindSetting("#effortSelect", "effort", "change");
   bindSetting("#myNameInput", "myName");
   bindSetting("#myVoiceInput", "myVoice");
@@ -894,12 +1004,18 @@ function init() {
   $("#setupModal").addEventListener("click", (e) => {
     const link = e.target.closest("[data-link]");
     if (link) openLink(link.dataset.link);
+    const pick = e.target.closest("[data-prov]");
+    if (pick) {
+      setupProvider = pick.dataset.prov;
+      renderSetup();
+      setSetupStatus(keyFor(setupProvider) ? "You already have a key saved — paste a new one to replace it." : "");
+    }
   });
   $("#setupConnectBtn").addEventListener("click", () => connectKey($("#setupKeyInput").value));
   $("#setupKeyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") connectKey(e.target.value); });
   $("#setupKeyInput").addEventListener("input", (e) => {
     const v = e.target.value.trim();
-    if (v.startsWith("sk-ant-") && v.length >= 40) connectKey(v); // pasted a whole key: connect right away
+    if (detectProvider(v) && v.length >= 30) connectKey(v); // pasted a whole key: connect right away
   });
   $("#setupPasteBtn").addEventListener("click", async () => {
     try {
@@ -924,7 +1040,7 @@ function init() {
   $("#testKeyBtn").addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     const key = $("#apiKeyInput").value.trim();
-    if (!key && (NATIVE || !serverHasKey)) return openSetup();
+    if (!key && (prov() !== "claude" || NATIVE || !serverHasKey)) return openSetup();
     btn.disabled = true;
     btn.textContent = "Checking…";
     try {
@@ -945,7 +1061,7 @@ function init() {
 
   $("#exportAllBtn").addEventListener("click", () => {
     const { settings, ...rest } = state;
-    const data = { ...rest, settings: { ...settings, apiKey: "" } }; // never export the key
+    const data = { ...rest, settings: { ...settings, apiKey: "", keys: {} } }; // never export keys
     if (NATIVE) {
       copyText(JSON.stringify(data)).then(() => toast("Backup copied — paste it somewhere safe"));
       return;
@@ -970,7 +1086,8 @@ function init() {
     try {
       const data = JSON.parse(text);
       const key = state.settings.apiKey;
-      state = { ...structuredClone(DEFAULTS), ...data, settings: { ...DEFAULTS.settings, ...data.settings, apiKey: key }, theme: normalizeTheme(data.theme || PRESETS[0]) };
+      const keys = state.settings.keys;
+      state = { ...structuredClone(DEFAULTS), ...data, settings: { ...DEFAULTS.settings, ...data.settings, apiKey: key, keys }, theme: normalizeTheme(data.theme || PRESETS[0]) };
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       location.reload();
     } catch {
@@ -987,7 +1104,7 @@ function init() {
     document.documentElement.classList.add("native");
     $("#keyHint").textContent = "Stored only on this phone and sent only to Claude (api.anthropic.com).";
     $("#apiKeyInput").placeholder = "sk-ant-…";
-    if (!state.settings.apiKey) setTimeout(openSetup, 400);
+    if (!hasConnection()) setTimeout(openSetup, 400);
     // Android back button: close whatever is open before leaving the app.
     const AppPlugin = window.Capacitor?.Plugins?.App;
     AppPlugin?.addListener("backButton", () => {
@@ -997,8 +1114,7 @@ function init() {
       AppPlugin.minimizeApp();
     });
   }
-  refreshConnectBanner();
-  checkStatus();
+  syncConnectionUI();
 }
 
 init();

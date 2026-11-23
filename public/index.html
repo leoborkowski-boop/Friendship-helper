@@ -34,7 +34,7 @@
     <section class="panel composer" aria-label="Compose">
       <button class="connect-banner hidden" id="connectBanner">
         <span class="cb-icon">🔌</span>
-        <span><b>Connect Claude to start</b><br /><span class="muted">2-minute setup, you only do it once</span></span>
+        <span><b>Connect an AI to start</b><br /><span class="muted">Free options · 2-minute setup, only once</span></span>
         <span class="cb-go">Set up →</span>
       </button>
       <div class="segmented" role="tablist" id="modeTabs">
@@ -274,9 +274,17 @@
     </div>
     <div class="drawer-body">
       <div class="group">
-        <h4>Claude connection</h4>
+        <h4>AI connection</h4>
         <p class="status-line" id="statusLine">Checking…</p>
-        <label class="ctl">API key
+        <label class="ctl">Which AI
+          <select id="providerSelect">
+            <option value="gemini">🆓 Google Gemini (free)</option>
+            <option value="groq">🆓 Groq (free)</option>
+            <option value="openrouter">🆓 OpenRouter (free models)</option>
+            <option value="claude">💳 Claude (paid, best quality)</option>
+          </select>
+        </label>
+        <label class="ctl"><span id="keyLabel">API key</span>
           <div class="inline">
             <input type="password" id="apiKeyInput" placeholder="sk-ant-… (optional if the server has one)" autocomplete="off" />
             <button class="ghost-btn small" id="toggleKeyBtn" type="button">👁</button>
@@ -287,7 +295,11 @@
           <button class="ghost-btn small" id="openSetupBtn" type="button">🪄 Help me get a key</button>
         </div>
         <p class="hint" id="keyHint">Stored only in this browser and sent only to your own local server.</p>
-        <label class="ctl">Thinking speed
+        <p class="hint warn hidden" id="privacyNote"></p>
+        <label class="ctl hidden" id="modelRow">Model <span class="muted">(leave empty for the default)</span>
+          <input id="modelInput" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        </label>
+        <label class="ctl" id="effortRow">Thinking speed
           <select id="effortSelect">
             <option value="low">⚡ Fast</option>
             <option value="medium">⚖️ Balanced</option>
@@ -344,48 +356,25 @@
   <!-- Connect-to-Claude setup -->
   <dialog class="modal small-modal setup-modal" id="setupModal">
     <div class="modal-head">
-      <h2>🔌 Connect to Claude</h2>
+      <h2>🔌 Connect an AI</h2>
       <button class="icon-btn close" data-close>✕</button>
     </div>
-    <p class="setup-intro">Takes about 2 minutes and you only do it once. Each button opens Anthropic's site, then come back here.</p>
-    <ol class="steps">
-      <li>
-        <span class="num">1</span>
-        <div>
-          <b>Make an Anthropic account</b>
-          <p>Sign up with your email or Google. It's free to create.</p>
-          <button class="ghost-btn small" data-link="https://platform.claude.com/">Open Claude Console ↗</button>
-        </div>
-      </li>
-      <li>
-        <span class="num">2</span>
-        <div>
-          <b>Add a little credit</b>
-          <p>Pay-as-you-go: about 1–5¢ per message, so $5 lasts a long time. You can set a spending limit there too.</p>
-          <button class="ghost-btn small" data-link="https://platform.claude.com/settings/billing">Open Billing ↗</button>
-        </div>
-      </li>
-      <li>
-        <span class="num">3</span>
-        <div>
-          <b>Create a key and copy it</b>
-          <p>Tap <i>Create Key</i>, name it “Friendship Helper”, then copy it. It starts with <code>sk-ant-</code> and is only shown once.</p>
-          <button class="ghost-btn small" data-link="https://platform.claude.com/settings/keys">Open API Keys ↗</button>
-        </div>
-      </li>
-      <li>
-        <span class="num">4</span>
+    <div class="provider-pick" id="providerPick"></div>
+    <p class="setup-intro" id="setupIntro"></p>
+    <ol class="steps" id="setupSteps">
+      <li id="pasteStep">
+        <span class="num" id="pasteNum">3</span>
         <div>
           <b>Paste it here</b>
           <div class="inline">
-            <input type="password" id="setupKeyInput" placeholder="sk-ant-…" autocomplete="off" />
+            <input type="password" id="setupKeyInput" placeholder="Paste your key" autocomplete="off" />
             <button class="ghost-btn" id="setupPasteBtn" type="button">📋 Paste</button>
           </div>
           <p class="setup-status" id="setupStatus"></p>
         </div>
       </li>
     </ol>
-    <p class="hint">Your key stays on this device. Never share it — anyone with it can spend your credit.</p>
+    <p class="hint" id="setupHint"></p>
     <div class="modal-foot">
       <button class="link-btn" data-close>Later</button>
       <button class="primary-btn compact" id="setupConnectBtn">Connect</button>

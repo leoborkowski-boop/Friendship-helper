@@ -7,7 +7,7 @@ import { suggest, checkKey, friendlyError, DEFAULT_MODEL } from "./suggest.js";
 export const MODEL = DEFAULT_MODEL;
 
 export async function suggestDirect({ apiKey, history, effort }) {
-  if (!apiKey) throw new Error("Add your Claude API key in ⚙️ Settings → Claude connection first.");
+  if (!apiKey) throw new Error("Add your Claude API key in ⚙️ Settings → AI connection first.");
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   try {
     return await suggest(client, { history, effort });
