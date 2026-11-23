@@ -492,5 +492,12 @@ dialog.modal[open] > .style-grid { flex: 1 1 auto; min-height: 200px; }
 /* ───────── Android app: keep clear of the status & navigation bars ───────── */
 .native { --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
 .native body { padding-top: var(--sat); padding-bottom: var(--sab); }
+.native body::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; z-index: 35;
+  height: var(--sat);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+}
 .native .drawer { padding-top: var(--sat); padding-bottom: var(--sab); }
 .native .toast { bottom: calc(24px + var(--sab)); }

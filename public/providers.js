@@ -104,7 +104,7 @@ function describe(e) {
     case "nomodel":
       return `Your key works, but none of ${p.name}'s free models would answer it.${d} Try another free AI in Settings.`;
     case "server":
-      return `${p.name} is having trouble right now. Try again in a moment.`;
+      return `${p.name}'s servers are busy or having trouble right now. Try again in a moment, or switch to another free AI in Settings.${d}`;
     case "network":
       return `Couldn't reach ${p.name}. Check your internet connection.`;
     default:
@@ -129,7 +129,7 @@ async function request(provider, url, init) {
 }
 
 // ───────────────────────── raw calls ─────────────────────────
-async function callGemini(apiKey, model, { system, history }) {
+async function callGemini(apiKey, model, { system, history, plain = false }) {
   const contents = history.map((turn) =>
     turn.role === "assistant"
       ? { role: "model", parts: [{ text: String(turn.text ?? "") }] }
@@ -142,10 +142,9 @@ async function callGemini(apiKey, model, { system, history }) {
         },
   );
   const body = { contents };
-  if (system) {
-    body.systemInstruction = { parts: [{ text: system }] };
-    body.generationConfig = { responseMimeType: "application/json" };
-  }
+  if (system) body.systemInstruction = { parts: [{ text: system }] };
+  // Strict JSON mode helps, but some models fail on it: `plain` retries without it.
+  if (system && !plain) body.generationConfig = { responseMimeType: "application/json" };
   const data = await request("gemini", `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
@@ -280,17 +279,42 @@ export async function suggestFree(provider, { apiKey, model, auto = {}, onAuto =
     use = await findWorkingModel(provider, apiKey, { vision });
     onAuto(slot, use);
   }
-  const run = (m) => callModel(provider, apiKey, m, { system: JSON_RULES, history });
-  let out;
+  const run = (m, opts = {}) => callModel(provider, apiKey, m, { system: JSON_RULES, history, ...opts });
+  const switchable = (e) => e instanceof ProviderError && (e.kind === "model" || e.kind === "server");
+  let out = null;
+  let err = null;
   try {
     out = await run(use);
-  } catch (err) {
-    // The remembered model stopped working: find another one and try once more.
-    if (!(err instanceof ProviderError) || err.kind !== "model") throw err;
+  } catch (e) {
+    err = e;
+  }
+  // Busy / server error: wait a moment and retry once without strict JSON mode.
+  if (!out && err instanceof ProviderError && err.kind === "server") {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      out = await run(use, { plain: true });
+    } catch (e) {
+      err = e;
+    }
+  }
+  if (!out) {
+    if (!switchable(err)) throw err;
     if (model) throw new Error(`${p.name} won't run the model “${model}” you typed in Settings. Clear the Model box to let the app pick one.${err.details ? ` (${err.details.slice(0, 160)})` : ""}`);
-    use = await findWorkingModel(provider, apiKey, { vision, exclude: [use] });
+    // That model isn't working right now: find another one and try once more.
+    let next;
+    try {
+      next = await findWorkingModel(provider, apiKey, { vision, exclude: [use] });
+    } catch (e) {
+      throw e instanceof ProviderError && e.kind === "nomodel" ? err : e; // nothing else to switch to: show the original reason
+    }
+    use = next;
     onAuto(slot, use);
-    out = await run(use);
+    try {
+      out = await run(use);
+    } catch (e) {
+      if (!(e instanceof ProviderError && e.kind === "server")) throw e;
+      out = await run(use, { plain: true });
+    }
   }
   if (out.refused) return { refusal: true, error: `${p.name} didn't want to help with that one. Try rephrasing what you're going for.` };
   return { result: parseResult(out.text), raw: out.text, model: use };
